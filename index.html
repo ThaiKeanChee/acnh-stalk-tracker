@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Island Stalk Tracker</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#028858">
+  <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/feathericons/feather/master/icons/trending-up.svg">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { background-color: #F8F5E9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  </style>
+</head>
+<body class="text-stone-800 pb-20">
+
+  <!-- Header -->
+  <header class="bg-[#028858] text-white p-4 shadow-md flex justify-between items-center sticky top-0 z-20">
+    <div>
+      <h1 class="text-xl font-bold flex items-center gap-2">🍃 Stalk Tracker</h1>
+      <p id="subheading" class="text-xs text-emerald-100">Connecting...</p>
+    </div>
+    <button onclick="changeProfile()" class="text-xs bg-emerald-700 hover:bg-emerald-600 px-3 py-1.5 rounded-full font-medium transition">
+      ⚙️ Edit Profile
+    </button>
+  </header>
+
+  <main class="max-w-md mx-auto p-4 space-y-5">
+    
+    <!-- Sell Recommendation Box -->
+    <div id="bestIslandBox" class="bg-amber-100 border-2 border-amber-300 p-4 rounded-2xl shadow-sm text-center">
+      <p class="text-xs font-bold uppercase tracking-wider text-amber-800">🌟 Best Price Right Now</p>
+      <h2 id="topPriceText" class="text-2xl font-black text-amber-900 mt-1">Checking prices...</h2>
+    </div>
+
+    <!-- Chart -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-stone-200">
+      <h3 class="text-sm font-bold text-stone-700 mb-2">Weekly Trend (Bells)</h3>
+      <canvas id="stalkChart" height="200"></canvas>
+    </div>
+
+    <!-- Input Section for Current User's Island -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-stone-200 space-y-4">
+      <div class="flex justify-between items-center border-b border-stone-100 pb-2">
+        <h3 class="font-bold text-stone-800">Record Today's Price</h3>
+        <span id="currentSlotLabel" class="text-xs bg-emerald-100 text-emerald-800 font-bold px-2.5 py-1 rounded-full"></span>
+      </div>
+
+      <div class="flex gap-2">
+        <input type="number" id="priceInput" placeholder="e.g. 115" class="w-full text-lg p-3 rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#028858]">
+        <button onclick="submitPrice()" class="bg-[#028858] hover:bg-emerald-700 text-white font-bold px-5 rounded-xl shadow transition">Save</button>
+      </div>
+
+      <!-- Quick Sunday Buy Price -->
+      <div class="flex items-center justify-between pt-2 border-t border-stone-100 text-sm">
+        <label class="text-stone-600">Daisy Mae Buy Price (Sun):</label>
+        <div class="flex gap-2 items-center">
+          <input type="number" id="sundayBuyInput" placeholder="90-110" class="w-24 p-2 text-center rounded-lg border border-stone-300">
+          <button onclick="saveSundayPrice()" class="text-xs bg-stone-200 hover:bg-stone-300 font-semibold px-2.5 py-2 rounded-lg">Update</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- All Family Islands Live Board -->
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-stone-200">
+      <h3 class="font-bold text-stone-800 mb-3">Family Islands Overview</h3>
+      <div id="islandsList" class="divide-y divide-stone-100 text-sm">
+        <p class="text-stone-400 py-3 text-center">Loading family data...</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Setup / Join Modal -->
+  <div id="authModal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-xl space-y-4">
+      <h2 class="text-lg font-bold text-stone-900">Welcome to Island Tracker!</h2>
+      <p class="text-xs text-stone-500">Enter your family passcode and island info. No personal email or password needed.</p>
+
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs font-semibold text-stone-600">Family Passcode</label>
+          <input id="modalPasscode" type="password" placeholder="Passcode" class="w-full mt-1 p-2.5 border border-stone-300 rounded-xl text-sm">
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-stone-600">Your Character Name</label>
+          <input id="modalCharName" type="text" placeholder="e.g. Wallace" class="w-full mt-1 p-2.5 border border-stone-300 rounded-xl text-sm">
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-stone-600">Your Island Name</label>
+          <input id="modalIslandName" type="text" placeholder="e.g. Evergreen" class="w-full mt-1 p-2.5 border border-stone-300 rounded-xl text-sm">
+        </div>
+      </div>
+
+      <button onclick="saveProfileAndJoin()" class="w-full bg-[#028858] text-white py-3 rounded-xl font-bold shadow hover:bg-emerald-700 transition">
+        Enter Island
+      </button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // Pre-filled with your project credentials:
+    const firebaseConfig = {
+      apiKey: "AIzaSyDeJpukt3rkn95gHkuf0JYCUPeS6Lj9jVQ",
+      authDomain: "acnh-stalk-tracker.firebaseapp.com",
+      projectId: "acnh-stalk-tracker",
+      storageBucket: "acnh-stalk-tracker.firebasestorage.app",
+      messagingSenderId: "1039322718894",
+      appId: "1:1039322718894:web:ad0f8ca2509b0ede40833f"
+    };
+
+    const EXPECTED_PASSCODE = "NOOK2026";
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let myProfile = JSON.parse(localStorage.getItem('stalk_profile') || 'null');
+    let chartInstance = null;
+    let cachedIslands = [];
+
+    const SLOTS = ['sun', 'monAm', 'monPm', 'tueAm', 'tuePm', 'wedAm', 'wedPm', 'thuAm', 'thuPm', 'friAm', 'friPm', 'satAm', 'satPm'];
+    const LABELS = ['Sun', 'Mon AM', 'Mon PM', 'Tue AM', 'Tue PM', 'Wed AM', 'Wed PM', 'Thu AM', 'Thu PM', 'Fri AM', 'Fri PM', 'Sat AM', 'Sat PM'];
+
+    function getCurrentSlot() {
+      const now = new Date();
+      const day = now.getDay();
+      const isPm = now.getHours() >= 12;
+      if (day === 0) return 'sun';
+      const days = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+      return days[day] + (isPm ? 'Pm' : 'Am');
+    }
+
+    window.onload = () => {
+      if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+      if (!myProfile || myProfile.passcode !== EXPECTED_PASSCODE) {
+        document.getElementById('authModal').classList.remove('hidden');
+      } else {
+        startApp();
+      }
+    };
+
+    window.saveProfileAndJoin = () => {
+      const passcode = document.getElementById('modalPasscode').value.trim();
+      const charName = document.getElementById('modalCharName').value.trim() || 'Resident';
+      const islandName = document.getElementById('modalIslandName').value.trim() || 'My Island';
+
+      if (passcode !== EXPECTED_PASSCODE) {
+        alert("Incorrect Family Passcode! Ask your family host.");
+        return;
+      }
+
+      let islandId = myProfile?.islandId || 'island_' + Math.random().toString(36).substring(2, 9);
+      myProfile = { passcode, charName, islandName, islandId };
+      localStorage.setItem('stalk_profile', JSON.stringify(myProfile));
+      document.getElementById('authModal').classList.add('hidden');
+      startApp();
+    };
+
+    window.changeProfile = () => {
+      document.getElementById('modalPasscode').value = myProfile?.passcode || '';
+      document.getElementById('modalCharName').value = myProfile?.charName || '';
+      document.getElementById('modalIslandName').value = myProfile?.islandName || '';
+      document.getElementById('authModal').classList.remove('hidden');
+    };
+
+    function startApp() {
+      document.getElementById('subheading').innerText = `${myProfile.charName} @ ${myProfile.islandName}`;
+      const slot = getCurrentSlot();
+      document.getElementById('currentSlotLabel').innerText = `Period: ${slot.toUpperCase()}`;
+
+      onSnapshot(collection(db, "families", myProfile.passcode, "islands"), (snapshot) => {
+        cachedIslands = [];
+        snapshot.forEach(doc => cachedIslands.push({ id: doc.id, ...doc.data() }));
+        renderAll();
+      }, (error) => {
+        alert("Firestore access error: " + error.message);
+      });
+    }
+
+    function renderAll() {
+      renderIslandsList();
+      renderBestIsland();
+      renderChart();
+    }
+
+    function renderIslandsList() {
+      const container = document.getElementById('islandsList');
+      if (cachedIslands.length === 0) {
+        container.innerHTML = `<p class="text-stone-400 py-3 text-center">No prices logged yet this week.</p>`;
+        return;
+      }
+      const slot = getCurrentSlot();
+      container.innerHTML = cachedIslands.map(item => {
+        const currentVal = item.prices?.[slot] || '—';
+        const isMe = item.id === myProfile.islandId;
+        return `
+          <div class="py-2.5 flex justify-between items-center">
+            <div>
+              <p class="font-bold text-stone-800">${item.islandName} <span class="text-xs font-normal text-stone-500">(${item.charName})${isMe ? ' • You' : ''}</span></p>
+              <p class="text-xs text-stone-400">Buy: ${item.prices?.sun || '—'} Bells</p>
+            </div>
+            <div class="text-right">
+              <span class="text-base font-black ${currentVal >= 150 ? 'text-emerald-600' : 'text-stone-700'}">${currentVal}</span>
+              <span class="text-xs text-stone-400 block">Bells</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderBestIsland() {
+      const slot = getCurrentSlot();
+      let best = null;
+      cachedIslands.forEach(isl => {
+        const p = parseInt(isl.prices?.[slot], 10);
+        if (!isNaN(p) && (!best || p > best.price)) {
+          best = { name: isl.islandName, char: isl.charName, price: p };
+        }
+      });
+
+      const topText = document.getElementById('topPriceText');
+      if (best) {
+        topText.innerHTML = `${best.price} Bells <span class="text-sm font-normal text-amber-800">at ${best.name} (${best.char})</span>`;
+      } else {
+        topText.innerText = "No prices logged for right now yet!";
+      }
+    }
+
+    function renderChart() {
+      const ctx = document.getElementById('stalkChart').getContext('2d');
+      const colors = ['#028858', '#E65100', '#1565C0', '#6A1B9A', '#C2185B'];
+
+      const datasets = cachedIslands.map((isl, idx) => ({
+        label: isl.islandName,
+        data: SLOTS.map(s => isl.prices?.[s] || null),
+        borderColor: colors[idx % colors.length],
+        backgroundColor: colors[idx % colors.length],
+        tension: 0.25,
+        spanGaps: true
+      }));
+
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { labels: LABELS, datasets },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } },
+          scales: { y: { beginAtZero: false, suggestedMin: 50, suggestedMax: 200 } }
+        }
+      });
+    }
+
+    window.submitPrice = async () => {
+      const val = parseInt(document.getElementById('priceInput').value, 10);
+      if (isNaN(val) || val <= 0) return alert('Enter a valid price');
+      const slot = getCurrentSlot();
+      await updateMyData(slot, val);
+      document.getElementById('priceInput').value = '';
+    };
+
+    window.saveSundayPrice = async () => {
+      const val = parseInt(document.getElementById('sundayBuyInput').value, 10);
+      if (isNaN(val) || val <= 0) return alert('Enter a valid price');
+      await updateMyData('sun', val);
+      document.getElementById('sundayBuyInput').value = '';
+    };
+
+    async function updateMyData(slot, value) {
+      const myDoc = cachedIslands.find(i => i.id === myProfile.islandId) || {};
+      const prices = myDoc.prices || {};
+      prices[slot] = value;
+
+      await setDoc(doc(db, "families", myProfile.passcode, "islands", myProfile.islandId), {
+        charName: myProfile.charName,
+        islandName: myProfile.islandName,
+        prices,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    }
+  </script>
+</body>
+</html>
